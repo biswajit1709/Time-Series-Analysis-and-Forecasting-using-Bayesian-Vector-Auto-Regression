@@ -1,0 +1,125 @@
+#Time-Series-Analysis-and-Forecasting-using-Bayesian-Vector-Auto-Regression
+
+#data preparation:
+data=read.csv("D:/UoH/SEM 4/Project/Data/Dataset.csv", header=TRUE)
+str(data)
+a1=data[, c(3, 4, 5, 6, 9)]
+str(a1)
+
+#converting raw data to time series data:
+a=ts(a1, start=c(1997, 2), frequency=4)
+
+#data plot:
+plot(a[, 1], lty=1, xlab="Year", ylab="GDP Growth Rate", main="Plot of the GDP Growth Rate of India")
+plot(a[, 2], lty=1, xlab="Year", ylab="Consumer Price Index", main="Plot of the Consumer Price Index (CPI)")
+plot(a[, 3], lty=1, xlab="Year", ylab="Dollar to Rupee Exchange Rate", main="Plot of Dollar to Rupee Exchange Rate")
+plot(a[, 4], lty=1, xlab="Year", ylab="Total Foreign Reserve (in USD)", main="Plot of the Total Foreign Reserve (excluding Gold) (in USD)")
+plot(a[, 5], lty=1, xlab="Year", ylab="Trade Deficit (in USD)", main="Plot of the Trade Deficit of India (in USD)")
+
+#replacing extreme values by their median values:
+median(a[, 1]) #6.6
+a[93, 1]=median(a[, 1])
+a[94, 1]=median(a[, 1])
+a[97, 1]=median(a[, 1])
+
+#data transformation:
+x=cbind(a[, 1], a[, 2], a[, 3], log(a[, 4]), log(a[, 5]))
+
+#insert column names:
+colnames(x)=c("GDP.Growth.Rate", "CPI", "Exchange.Rate", "log_FR", "log_deficit")
+
+#variable decomposition:
+x1=decompose(x[, 1])
+plot(x1)
+x2=decompose(x[, 2])
+plot(x2)
+x3=decompose(x[, 3])
+plot(x3)
+x4=decompose(x[, 4])
+plot(x4)
+x5=decompose(x[, 5])
+plot(x5)
+
+#stationarity check:
+library(tseries)
+adf.test(x[, 1]) #Stationary
+adf.test(x[, 2]) #Not Stationary
+adf.test(x[, 3]) #Not Stationary
+adf.test(x[, 4]) #Not Stationary
+adf.test(x[, 5]) #Not Stationary
+
+dt=diff(x, lag=4)
+adf.test(dt[, 1]) #Stationary
+adf.test(dt[, 2]) #Stationary
+adf.test(dt[, 3]) #Stationary
+adf.test(dt[, 4]) #Stationary
+adf.test(dt[, 5]) #Stationary
+
+
+#VAR order selection:
+library(vars)
+VARselect(dt, lag.max=6)
+
+#VAR model fitting
+model=VAR(dt, p=5)
+summary(model)
+
+#model diagnostics:
+#serial corellation test:
+serial.test(mod1, lags.pt = 5, type = "PT.asymptotic")
+
+#test for homoscedasticity:
+arch.test(mod1, lags.multi = 15, multivariate.only = TRUE)
+
+#test for normality:
+normality.test(mod1, multivariate.only = TRUE)
+
+#checking structural break:
+Stability=stability(mod1, type = "OLS-CUSUM")
+plot(Stability)
+
+#Granger Causality test:
+causality(mod1, cause = "GDP.Growth.Rate")
+causality(mod1, cause = "CPI")
+causality(mod1, cause = "Exchange.Rate")
+causality(mod1, cause = "log_FR")
+causality(mod1, cause = "log_deficit")
+
+
+#BAVR model fitting
+library(BVAR)
+#prior setup
+set.seed(19)
+mn <- bv_minnesota(lambda = bv_lambda(mode = 0.4, sd = 0.2, min = 0.0001, max = 5),
+                   alpha = bv_alpha(mode = 2, sd = 0.25, min = 1, max = 3), var = 1e07)
+soc <- bv_soc(mode = 1, sd = 1, min = 1e-04, max = 50)
+sur <- bv_sur(mode = 1, sd = 1, min = 1e-04, max = 50)
+priors <- bv_priors(hyper = "auto", mn = mn, soc = soc, sur = sur)
+mh <- bv_metropolis(scale_hess = 0.005, adjust_acc = TRUE,
+                    acc_lower = 0.25, acc_upper = 0.35, acc_change = 0.02)
+
+#model fitting
+fit <- bvar(dt, lags = 5, n_draw = 50000, n_burn = 25000, n_thin = 1,
+            priors = priors, mh = mh, verbose = TRUE)
+
+#Model diagnostics
+summary(fit)
+print(fit)
+plot(fit)
+
+fitted(fit, type = "mean")
+plot(residuals(fit, type = "mean"), 
+     vars = c("GDP.Growth.Rate", "CPI", "Exchange.Rate", "log_FR", "log_deficit"))
+
+opt_irf <- bv_irf(horizon = 16, identification = TRUE)
+irf <- irf(fit, opt_irf, conf_bands = c(0.05, 0.16))
+
+plot(irf, area = TRUE, 
+     vars_impulse = c("GDP.Growth.Rate", "CPI", "Exchange.Rate", "log_FR", "log_deficit"), 
+     vars_response = c(1:5))
+fevd(fit)
+
+#forecasting ising the fitted model:
+predict <- predict(fit, horizon = 20, conf_bands = c(0.05, 0.20))
+plot(predict, area = TRUE, t_back = 30, 
+     vars = c("GDP.Growth.Rate", "CPI", "Exchange.Rate", "log_FR", "log_deficit"))
