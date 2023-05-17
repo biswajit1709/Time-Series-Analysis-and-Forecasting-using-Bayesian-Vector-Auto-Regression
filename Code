@@ -40,6 +40,13 @@ plot(x4)
 x5=decompose(x[, 5])
 plot(x5)
 
+#verifying non-seasonality by fitting linear model
+summary(lm(x[, 1] ~ x1$seasonal + x1$trend))
+summary(lm(x[, 2] ~ x2$seasonal + x2$trend))
+summary(lm(x[, 3] ~ x3$seasonal + x3$trend))
+summary(lm(x[, 4] ~ x4$seasonal + x4$trend))
+summary(lm(x[, 5] ~ x5$seasonal + x5$trend))
+
 #stationarity check:
 library(tseries)
 adf.test(x[, 1]) #Stationary
@@ -65,7 +72,7 @@ model=VAR(dt, p=5)
 summary(model)
 
 #model diagnostics:
-#serial corellation test:
+#serial correlation test:
 serial.test(mod1, lags.pt = 5, type = "PT.asymptotic")
 
 #test for homoscedasticity:
